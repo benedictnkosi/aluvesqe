@@ -1,3 +1,71 @@
+schedules:
+  - cron: "0 4 * * Mon-Fri"
+    displayName: Runs Monday through Friday at 6:00 AM SAST
+    branches:
+      include:
+        - master
+    always: true
+
+pr: none
+trigger: none
+
+pool:
+  name: EQA-Agents
+
+jobs:
+  - job: A
+    displayName: 'Maven test'
+    #Runs scenarios with @tag tags
+    steps:
+      - script: mvn clean integration-test -Dcucumber.filter.tags="$(tag)" -DConfigType=JAVASCRIPT -Denv=$(env) -Ddb2_password=$(db2_password)
+        displayName: 'Run Daily Tests'
+        continueOnError: true
+
+      - task: PublishTestResults@2
+        inputs:
+          testResultsFormat: 'JUnit'
+          testResultsFiles: '**/TEST-*.xml'
+          searchFolder: '$(System.DefaultWorkingDirectory)/target/failsafe-reports'
+
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Cucumber files'
+        inputs:
+          PathtoPublish: '$(System.DefaultWorkingDirectory)/target/cucumber-reports'
+          ArtifactName: 'drop'
+          publishLocation: 'Container'
+
+  - job: B
+    dependsOn: A
+    displayName: 'Publish Report'
+    pool:
+      vmImage: 'ubuntu-latest'
+
+    steps:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download Cucumber files'
+        inputs:
+          buildType: 'current'
+          artifactName: 'drop'
+          targetPath: '$(System.DefaultWorkingDirectory)/target/cucumber-reports'
+
+      - task: CmdLine@2
+        inputs:
+          script: |
+            ls -latrR $(System.DefaultWorkingDirectory)/target/cucumber-reports
+            cat $(System.DefaultWorkingDirectory)/target/cucumber-reports/Cucumber.json
+
+
+      - task: PublishCucumberReport@1
+        displayName: 'Cucumber report $(tag)'
+        condition: succeededOrFailed()
+        inputs:
+          jsonDir: '$(System.DefaultWorkingDirectory)/target/cucumber-reports'
+          outputPath: 'target'
+          theme: 'bootstrap'
+          reportSuiteAsScenarios: true
+          name: 'EQA EPB $(tag) DAILY '
+          title: 'EQA EPB $(tag) DAILY Report'
 <!DOCTYPE html>
 <html lang="en">
   <head>
